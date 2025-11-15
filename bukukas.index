@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Aplikasi Buku Kas</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- CDN Library -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background:#edf2f7;
+    padding:20px;
+}
+.container {
+    max-width:820px;
+    margin:auto;
+    background:white;
+    padding:22px;
+    border-radius:12px;
+    box-shadow:0 3px 10px rgba(0,0,0,0.15);
+}
+input, select, button {
+    width:100%;
+    padding:12px;
+    margin:8px 0;
+    border-radius:8px;
+    border:1px solid #ccc;
+    font-size:15px;
+    box-sizing:border-box;
+}
+button {
+    background:#007bff;
+    border:none;
+    color:white;
+    cursor:pointer;
+    font-weight:bold;
+}
+button:hover {
+    background:#0056c7;
+}
+table {
+    width:100%;
+    border-collapse:collapse;
+    margin-top:15px;
+}
+th, td {
+    border:1px solid #ddd;
+    padding:10px;
+    vertical-align:middle;
+}
+th {
+    background:#007bff;
+    color:white;
+}
+h2, h3 {
+    margin-top:0;
+}
+.line {
+    border-top:2px solid #ddd;
+    margin:25px 0;
+}
+.btn-hapus {
+    padding:6px 10px;
+    background:#e53e3e;
+    color:white;
+    border:none;
+    border-radius:6px;
+    cursor:pointer;
+}
+.btn-hapus:hover { opacity:0.9; }
+.info-saldo { margin-top:12px; font-weight:bold; }
+.small { font-size:13px; color:#555; margin-top:6px; }
+</style>
+
+</head>
+<body>
+<div class="container">
+
+<h2>📘 Aplikasi Buku Kas</h2>
+<p class="small">Catat pemasukan & pengeluaran, tampilkan data sesuai bulan & tahun, lalu cetak laporan PDF.</p>
+
+<!-- Form Input Data -->
+<h3>Input Transaksi</h3>
+
+<label>Tanggal</label>
+<input type="date" id="tanggal">
+
+<label>Jenis Transaksi</label>
+<select id="jenis">
+    <option value="masuk">Masuk (Pemasukan)</option>
+    <option value="keluar">Keluar (Pengeluaran)</option>
+</select>
+
+<label>Jumlah (Rp)</label>
+<input type="number" id="jumlah" placeholder="contoh: 50000">
+
+<label>Keterangan</label>
+<input type="text" id="ket" placeholder="Contoh: Pembelian ATK">
+
+<button onclick="tambahData()">Simpan Transaksi</button>
+
+<div class="line"></div>
+
+<!-- Filter Bulan & Tahun -->
+<h3>Filter Bulan & Tahun</h3>
+
+<label>Pilih Bulan</label>
+<select id="bulanFilter" onchange="renderTabel()">
+    <option value="0">Januari</option>
+    <option value="1">Februari</option>
+    <option value="2">Maret</option>
+    <option value="3">April</option>
+    <option value="4">Mei</option>
+    <option value="5">Juni</option>
+    <option value="6">Juli</option>
+    <option value="7">Agustus</option>
+    <option value="8">September</option>
+    <option value="9">Oktober</option>
+    <option value="10">November</option>
+    <option value="11">Desember</option>
+</select>
+
+<label>Pilih Tahun</label>
+<select id="tahunFilter" onchange="renderTabel()"></select>
+
+<div class="line"></div>
+
+<!-- Tabel Data -->
+<h3>Data Transaksi</h3>
+
+<table id="tabel">
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Tanggal</th>
+            <th>Jenis</th>
+            <th>Jumlah</th>
+            <th>Keterangan</th>
+            <th>Aksi</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<p class="info-saldo">Saldo Bulan Terpilih: Rp <span id="saldoFilter">0</span></p>
+
+<div class="line"></div>
+
+<button onclick="cetakPDF()">Cetak Laporan PDF Bulanan</button>
+
+</div>
+
+<script>
+// -----------------------------
+// DATA
+// -----------------------------
+let data = JSON.parse(localStorage.getItem("bukuKas") || "[]");
+
+function simpanStorage(){
+    localStorage.setItem("bukuKas", JSON.stringify(data));
+}
+
+// -----------------------------
+// ISI TAHUN OTOMATIS
+// -----------------------------
+function isiTahun(){
+    const tahunSekarang = new Date().getFullYear();
+    const tahunSelect = document.getElementById("tahunFilter");
+    tahunSelect.innerHTML = "";
+    for(let t = tahunSekarang; t >= tahunSekarang - 10; t--){
+        tahunSelect.innerHTML += `<option value="${t}">${t}</option>`;
+    }
+}
+isiTahun();
+
+// -----------------------------
+// TAMPILKAN DATA DI TABEL SESUAI BULAN & TAHUN
+// -----------------------------
+function renderTabel(){
+    const tbody = document.querySelector("#tabel tbody");
+    tbody.innerHTML = "";
+
+    const bulan = parseInt(document.getElementById("bulanFilter").value);
+    const tahun = parseInt(document.getElementById("tahunFilter").value);
+
+    const dataFilter = data.filter(d => {
+        const tgl = new Date(d.tanggal);
+        return tgl.getMonth() === bulan && tgl.getFullYear() === tahun;
+    });
+
+    let saldo = 0;
+    dataFilter.forEach((d, idx) => {
+        saldo += (d.jenis === "masuk" ? d.jumlah : -d.jumlah);
+
+        const row = `<tr>
+            <td>${idx + 1}</td>
+            <td>${d.tanggal}</td>
+            <td>${d.jenis}</td>
+            <td>Rp ${d.jumlah.toLocaleString()}</td>
+            <td>${d.ket}</td>
+            <td><button class="btn-hapus" onclick="hapus(${data.indexOf(d)})">Hapus</button></td>
+        </tr>`;
+        tbody.innerHTML += row;
+    });
+
+    document.getElementById("saldoFilter").innerText = saldo.toLocaleString();
+}
+renderTabel();
+
+// -----------------------------
+// TAMBAH TRANSAKSI
+// -----------------------------
+function tambahData(){
+    const tanggal = document.getElementById("tanggal").value;
+    const jenis = document.getElementById("jenis").value;
+    const jumlah = parseInt(document.getElementById("jumlah").value);
+    const ket = document.getElementById("ket").value;
+
+    if(!tanggal || !jumlah){
+        alert("Tanggal dan jumlah wajib diisi!");
+        return;
+    }
+
+    data.push({ tanggal, jenis, jumlah, ket });
+    simpanStorage();
+    renderTabel();
+
+    document.getElementById("tanggal").value = "";
+    document.getElementById("jumlah").value = "";
+    document.getElementById("ket").value = "";
+}
+
+// -----------------------------
+// HAPUS TRANSAKSI
+// -----------------------------
+function hapus(index){
+    const item = data[index];
+    if(!item) return;
+    const konfirmasi = confirm(`Hapus transaksi:\n${item.tanggal} - ${item.jenis} - Rp ${item.jumlah.toLocaleString()} ?`);
+    if(konfirmasi){
+        data.splice(index, 1);
+        simpanStorage();
+        renderTabel();
+    }
+}
+
+// -----------------------------
+// CETAK PDF
+// -----------------------------
+async function cetakPDF(){
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+
+    const bulan = parseInt(document.getElementById("bulanFilter").value);
+    const tahun = parseInt(document.getElementById("tahunFilter").value);
+
+    const dataFilter = data.filter(d => {
+        const tgl = new Date(d.tanggal);
+        return tgl.getMonth() === bulan && tgl.getFullYear() === tahun;
+    });
+
+    if(dataFilter.length === 0){
+        alert("Tidak ada data pada bulan tersebut.");
+        return;
+    }
+
+    doc.setFontSize(14);
+    doc.text(`LAPORAN BUKU KAS`, 14, 15);
+    doc.setFontSize(11);
+    doc.text(`${document.getElementById("bulanFilter").options[bulan].text} ${tahun}`, 14, 23);
+    doc.text(`Tanggal Cetak: ${new Date().toLocaleDateString("id-ID")}`, 14, 30);
+
+    const rows = dataFilter.map(d => [
+        d.tanggal,
+        d.jenis,
+        "Rp " + d.jumlah.toLocaleString(),
+        d.ket
+    ]);
+
+    doc.autoTable({
+        head: [["Tanggal", "Jenis", "Jumlah", "Keterangan"]],
+        body: rows,
+        startY: 38,
+        styles: { fontSize: 10 }
+    });
+
+    const saldo = dataFilter.reduce((t,d)=> t + (d.jenis==="masuk"?d.jumlah:-d.jumlah),0);
+    doc.text(`Saldo Bulan Ini: Rp ${saldo.toLocaleString()}`, 14, doc.lastAutoTable.finalY + 10);
+
+    doc.save(`laporan-${bulan+1}-${tahun}.pdf`);
+}
+
+// Jalankan render awal
+renderTabel();
+</script>
+
+</body>
+</html>
